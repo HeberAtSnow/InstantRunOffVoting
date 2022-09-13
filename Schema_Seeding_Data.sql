@@ -1,3 +1,5 @@
+insert into election (earlyvotingbegin, earlyvotingend, poll_date, ballotingclosed) values (to_date('01 Sep 2022','DD Mon YYYY'),to_date('02 Nov 2022','DD Mon YYYY'), to_date('03 Nov 2022','DD Mon YYYY'),false);
+
 insert into county (county_name,county_description,contact_title,contact_name,contact_email,contact_phone)
 values ('Sanpete County', 'Recorder, Assessor and Treasurer', 'County Clerk','Sandy Neill','sneill@sanpetecountyutah.gov','435-835-2131 Ext. 5');
 insert into county (county_name,county_description,contact_title,contact_name,contact_email,contact_phone)
@@ -53,55 +55,41 @@ values
 ('Valerie Vianacious','Valerie.Vianacious@nowhere.com','5323914500')
 ;
 
+insert into party (party_name,party_ballot_label) values ('Republican','REP'),('Democrat','DEM'),('United Utah','UNITED'),('Libertarian','LIB'),('Constitution Party of Utah','CONST');
 
+insert into office_in_election (office_id,election_id,quantity) values
+(1,1,1),(2,1,1),(3,1,1),(4,1,1),(5,1,3),(6,1,1);
 
-insert into candidate_office (candidate_id, office_id, eliminated_tf, filed_date )
-values
-(1,1,false,now()),
-(2,1,false,now()),
-(3,1,false,now()),
-(4,2,false,now()),
-(5,2,false,now()),
-(6,2,false,now()),
-(7,3,false,now()),
-(8,3,false,now()),
-(9,3,false,now()),
-(10,4,false,now()),
-(11,4,false,now()),
-(12,4,false,now()),
-(13,4,false,now()),
-(14,5,false,now()),
-(15,5,false,now()),
-(16,5,false,now()),
-(17,5,false,now()),
-(18,5,false,now()),
-(19,5,false,now()),
-(20,5,false,now()),
-(21,5,false,now()),
-(22,5,false,now()),
-(23,5,false,now()),
-(24,6,false,now()),
-(25,6,false,now()),
-(26,6,false,now()),
-(27,6,false,now()),
-(28,6,false,now());
-
-
-
-
---Display_The_Ballot_Choices
-select
-coalesce (ci.city_name,cty.county_name,s.state_name) juristiction,
-o.office_name office,
-o.positions_num NumberToElect,
-c.candidate_name CandidateName,
-c.candidate_email CandidateEmail,
-co.filed_date filed_date
-from 
-city ci right outer join
-office o on (o.city_id =ci.id) left outer join 
-county cty on (cty.id=o.county_id) left outer join 
-state s on (s.id=o.state_id) inner join 
-candidate_office co on (co.office_id=o.id) inner join 
-candidate c on (c.id=co.candidate_id)
+insert into candidate_oie (candidate_id,oie_id,eliminated_tf,filed_date,candidate_type,party_id)
+values 
+(1,1,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',1),
+(2,1,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',2),
+(3,1,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',3),
+(4,1,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',5),
+(5,1,false,to_date('22 Oct 2022','DD Mon YYYY'),'write-in',null),
+(6,1,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',4),
+(7,2,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',1),
+(8,2,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',2),
+(9,2,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',3),
+(10,3,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',1),
+(11,3,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',2),
+(12,4,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',1),
+(13,4,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',2),
+(14,4,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',3),
+(15,4,false,to_date('02 Jun 2022','DD Mon YYYY'),'write-in',null),
+(16,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',1),
+(17,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',1),
+(18,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',1),
+(19,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',2),
+(20,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',2),
+(21,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',2),
+(22,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',3),
+(27,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',4),
+(28,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',5),
+(23,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',3),
+(24,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',4),
+(25,5,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',5),
+(26,6,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',1),
+(27,6,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',2),
+(28,6,false,to_date('02 Jun 2022','DD Mon YYYY'),'printed',3);
 
