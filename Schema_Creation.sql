@@ -2,6 +2,8 @@ Create schema if not exists iro2;
 
 set search_path='iro2';
 
+drop view if exists vResultsPivot;
+drop view if exists vEffectiveBallot;
 drop table if exists tabulationresult;
 drop table if exists ballot_pref;
 drop table if exists ballot;
@@ -245,7 +247,7 @@ begin
 		office_in_election oie inner join candidate_oie coie on (oie.id=coie.oie_id)
 		where oie.election_id=electionID and oie.id=oieID );
 	get diagnostics num_upd = row_count ;
-	RAISE INFO 'Deleted % rows, to start new tabulation results for office id: % and ElectionID: %.', num_upd, offioieID, electionID;
+	RAISE INFO 'Deleted % rows, to start new tabulation results for office id: % and ElectionID: %.', num_upd, oieID, electionID;
 
 	RAISE INFO 'Round number is %',roundnumber;
 	loop
