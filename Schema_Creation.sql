@@ -114,101 +114,102 @@ $$
 
 
 
-create view vEffectiveBallot (office_id , c_o_id, numvotes, PctEffectiveBallots, office_total_votes) as (
+create or replace view vEffectiveBallot (election_id, coie_id, oie_id , candidate_id, numvotes, PctEffectiveBallots, office_total_votes) as (
 with 
 pref1 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num =1 
 ),
 pref2 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=2 
 ),
 pref3 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=3 
 ),
 pref4 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=4 
 ),
 pref5 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=5 
 ),
 pref6 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=6 
 ),
 pref7 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=7 
 ),
 pref8 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=8 
 ),
 pref9 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=9 
 ),
 pref10 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=10 
 ),
 pref11 as (
-select ballot_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
+select ballot_id, coie.oie_id, case when eliminated_tf is true then null else candidate_oie_id end coie_id  
 from ballot_pref bp inner join candidate_oie coie on (bp.candidate_oie_id=coie.id)
 where preference_num=11 
 ),
 eff_ballot as (
 select pref1.ballot_id,
+		pref1.oie_id,
        coalesce(pref1.coie_id,pref2.coie_id,pref3.coie_id, pref4.coie_id,pref5.coie_id,
        		pref6.coie_id,pref7.coie_id,pref8.coie_id,pref9.coie_id,pref10.coie_id,pref11.coie_id
        ) effective_coie_id
 from
 	pref1 
-	full join pref2 on (pref1.ballot_id=pref2.ballot_id and pref1.coie_id=pref2.coie_id)
-	full join pref3 on (pref1.ballot_id=pref3.ballot_id and pref1.coie_id=pref3.coie_id)
-	full join pref4 on (pref1.ballot_id=pref4.ballot_id and pref1.coie_id=pref4.coie_id)
-	full join pref5 on (pref1.ballot_id=pref5.ballot_id and pref1.coie_id=pref5.coie_id)
-	full join pref6 on (pref1.ballot_id=pref6.ballot_id and pref1.coie_id=pref6.coie_id)
-	full join pref7 on (pref1.ballot_id=pref7.ballot_id and pref1.coie_id=pref7.coie_id)
-	full join pref8 on (pref1.ballot_id=pref8.ballot_id and pref1.coie_id=pref8.coie_id)
-	full join pref9 on (pref1.ballot_id=pref9.ballot_id and pref1.coie_id=pref9.coie_id)
-	full join pref10 on (pref1.ballot_id=pref10.ballot_id and pref1.coie_id=pref10.coie_id)
-	full join pref11 on (pref1.ballot_id=pref11.ballot_id and pref1.coie_id=pref11.coie_id)
+	full join pref2 on (pref1.ballot_id=pref2.ballot_id and pref1.oie_id=pref2.oie_id)
+	full join pref3 on (pref1.ballot_id=pref3.ballot_id and pref1.oie_id=pref3.oie_id)
+	full join pref4 on (pref1.ballot_id=pref4.ballot_id and pref1.oie_id=pref4.oie_id)
+	full join pref5 on (pref1.ballot_id=pref5.ballot_id and pref1.oie_id=pref5.oie_id)
+	full join pref6 on (pref1.ballot_id=pref6.ballot_id and pref1.oie_id=pref6.oie_id)
+	full join pref7 on (pref1.ballot_id=pref7.ballot_id and pref1.oie_id=pref7.oie_id)
+	full join pref8 on (pref1.ballot_id=pref8.ballot_id and pref1.oie_id=pref8.oie_id)
+	full join pref9 on (pref1.ballot_id=pref9.ballot_id and pref1.oie_id=pref9.oie_id)
+	full join pref10 on (pref1.ballot_id=pref10.ballot_id and pref1.oie_id=pref10.oie_id)
+	full join pref11 on (pref1.ballot_id=pref11.ballot_id and pref1.oie_id=pref11.oie_id)
 ),
 office_votes as (
-select oie_id,count(*) as office_total_votes from 
-	candidate_oie coie inner join eff_ballot on (eff_ballot.effective_coie_id=coie.id)
-group by oie_id
+	select oie_id,count(*) as office_total_votes from eff_ballot group by oie_id
 )
 select	
 	oie.election_id election_id,
-	coie.oie_id office_id,
+	coie.id coie_id,
+	coie.oie_id,
 	coie.candidate_id,
 	count(*) as numvotes,--numvotes
 	count(*)/(cast(office_votes.office_total_votes as decimal))*100 as PctEffectiveBallots,
 	office_votes.office_total_votes
 from
-	candidate_oie coie inner join eff_ballot on (coie.id=eff_ballot.effective_coie_id)
-	inner join office_in_election oie on (oie.id=coie.oie_id)
-	inner join office_votes on (office_votes.oie_id=oie.id)
-group by 1,2,3,6
-order by 1,2,3 desc;
-
-
+	eff_ballot inner join 
+	candidate_oie coie on (eff_ballot.effective_coie_id=coie.id) inner join 
+	office_in_election oie on (oie.id=coie.oie_id) inner join
+	office_votes on (office_votes.oie_id=oie.id)
+group by 1,2,3,4,7
+order by 1,3,4 desc
+)
+;
 
 
 
