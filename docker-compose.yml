@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  irodb:
+    image: postgres
+    container_name: irodb
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=iro2
+      - POSTGRES_PASSWORD=Secret123
+    volumes:
+      - ./Schema_Creation.sql:/docker-entrypoint-initdb.d/Schema_Creation.sql
+      - ./Schema_Seeding_Data.sql:/docker-entrypoint-initdb.d/Schema_Seeting_Data.sql
+      - ./iro_data:/var/lib/postgresql/data
