@@ -62,59 +62,54 @@ alter table tabulationresult add constraint tabulation_candidateoffice_FK FOREIG
 
 
 
-create or replace procedure sim_voter_bulk(num_votes int, commit_every int, precinct_input varchar(80))
-language plpgsql as $$
+
+--Voter Simulation (ballot generation) Logic
+
+create or replace procedure sim_ballots_bulk(electionID int, num_votes int, commit_every int, precinct_input varchar(80)) language plpgsql as $$
 declare 
   ballots_done int;
+  my_cur_ballot int;
+  eachOfficeInElection record;
+  my_rownum int; my_election_rows int;
+  my_row candidate_oie%ROWTYPE;
+  c1 cursor (oieID int) for select coie.id,coie.candidate_id,coie.oie_id from candidate_oie coie inner join office_in_election oie on (coie.oie_id=oie.id) where oie.election_id=electionID and coie.oie_id=oieID order by random();
 begin
+	if num_votes <=0 or num_votes is null then raise EXCEPTION 'Can not call this procedure with num_votes <= 0.  Set num_votes to how many ballots(voters) you want to simulate.'; end if;
+	if commit_every is null or commit_every <=0 then raise EXCEPTION 'Can not call this procedure.  Commit point (commit_every) must be >=0.'; end if;
+	--validate electionID
+	----ensure election exists and is open for voting
+	----ensure candidates have been configured for the election
+	select count(*) into my_election_rows from election where id=electionID and ballotingclosed=false;
+	if ( my_election_rows != 1 or electionID is null ) then raise EXCEPTION 'Can not call this procedure with bad electionID.  ElectionID must not be null and ballotingclosed must be FALSE.'; end if;
+	select count(*) into my_election_rows from election e inner join office_in_election oie on (oie.election_id=e.id) inner join candidate_oie coie on (coie.oie_id=oie.id) where e.id=electionID;
+	if (my_election_rows <1) then raise EXCEPTION 'Can not call this procedure.  Election is missing candidates configured to offices in the election.'; end if;
+
 	ballots_done:=0;
 	while ballots_done < num_votes
 	loop
-	   call sim_voter_ballot(precinct_input);
-	   ballots_done := ballots_done +1;
-	   if(ballots_done%commit_every = 0) then commit; end if;
-	end loop;
-end 
-$$
-;
-
-create or replace procedure sim_voter_ballot(precinct_input varchar(80))
-language plpgsql as $$
-declare 
-	my_cur_ballot int;
-begin
-	insert into ballot(voter_id,precinctinfo,cast_timestamp) values(   nextval('voter_id_seq'), precinct_input,now())
-	   returning id into my_cur_ballot;
-	call sim_voter_ballot_pref(my_cur_ballot);
-end 
-$$
-;
-
-create or replace procedure sim_voter_ballot_pref(ballot_id_input int)
-language plpgsql as $$
-declare 
-  dist_office_id_list record;
-  cand_off cursor (this_office_id int) for select id,candidate_id,office_id from candidate_office where office_id=this_office_id order by random();
-  my_rownum int;
-  my_row candidate_office%ROWTYPE;
-  c1 cursor (this_office_id int) for select id,candidate_id,office_id from candidate_office where office_id=this_office_id order by random();
-begin
-	FOR dist_office_id_list in select distinct office_id from candidate_office
+		insert into ballot(voter_id,precinctinfo,cast_timestamp) values(   nextval('voter_id_seq'), precinct_input,now())
+		   returning id into my_cur_ballot;
+		FOR eachOfficeInElection in select distinct oie_id from candidate_oie coie inner join office_in_election oie on (coie.oie_id=oie.id) where election_id=electionID
 		loop
-			open c1(dist_office_id_list.office_id);
+			open c1(eachOfficeInElection.oie_id); 
 			my_rownum:=1;--firstPref=1
-			loop
+			loop --each CANDIDATE in the given office (each row in candidate_oie)
 				fetch c1 into my_row;
 				exit when not found;
 				insert into ballot_pref (ballot_id,preference_num,candidate_oie_id)
-		     	  values (ballot_id_input, dist_office_id_list.office_id, my_rownum, my_row.id);
-		        my_rownum := my_rownum +1;
+				values (my_cur_ballot, my_rownum, my_row.id);
+				my_rownum := my_rownum +1;
 			end loop;
-    		close c1;
-    END LOOP;
-end 
+			close c1;
+		END LOOP;
+	   ballots_done := ballots_done +1;
+	   if(ballots_done%commit_every = 0) then commit; end if;
+	end loop;
+	commit; --catch any leftover records
+end
 $$
 ;
+
 
 
 
@@ -124,8 +119,8 @@ with
 pref1 as (
 select ballot_id,co.office_id,case 
 when co.eliminated_tf is true then null else candidate_office_id end c_o_id  from
-ballot_pref bp inner join candidate_office co 
-on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+ballot_pref bp inner join candidate_oie coie
+on (bp.candidate_oie_id=coie.id)
 --inner join vars on (vars.curr_office=co.office_id)
 where preference_num =1 
 ),
