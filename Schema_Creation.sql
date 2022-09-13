@@ -1,22 +1,22 @@
-Create schema if not exists iro;
+Create schema if not exists iro2;
 
-set search_path='iro';
+set search_path='iro2';
 
+drop table if exists tabulationresult;
 drop table if exists ballot_pref;
 drop table if exists ballot;
-
-drop table if exists candidate_office;
-
-drop table if exists office;
+drop table if exists candidate_oie;
+drop table if exists party;
 drop table if exists candidate;
-
+drop table if exists office_in_election;
+drop table if exists election;
+drop table if exists office;
 Drop table if exists state;
 Drop table if exists city;
 Drop table if exists county;
-
 drop sequence if exists voter_id_seq;
-create sequence voter_id_seq increment by 1 start with 111;
 
+create sequence voter_id_seq increment by 1 start with 111;
 
 create table county (id serial primary key, county_name varchar(80), county_description varchar(80),  contact_title varchar(80), contact_name varchar(80), contact_email varchar(200), contact_phone varchar(80));
 
@@ -30,42 +30,36 @@ CHECK ( (county_id IS NOT null and city_id IS NULL and state_id IS NULL) or (cou
 Alter table office add constraint office_city_fk FOREIGN KEY (city_id) REFERENCES city(id);
 Alter table office add constraint office_state_fk FOREIGN KEY (state_id) REFERENCES state(id);
 Alter table office add constraint office_county_fk FOREIGN KEY (county_id) REFERENCES county(id);
-alter table office add constraint office_election_fk FOREIGN KEY(election_id) REFERENCES election(id);
+
+create table election (id serial primary key, earlyvotingbegin date, earlyvotingend date, poll_date date, ballotingclosed bool not null);
+
+create table office_in_election (id serial primary key, office_id integer, election_id integer, quantity integer default 1);
+alter table office_in_election add constraint office_election_election_fk FOREIGN KEY(election_id) REFERENCES election(id);
+alter table office_in_election add constraint office_election_office_fk FOREIGN KEY(office_id) REFERENCES office(id);
+create unique index office_in_election_nodup_UIX on office_in_election(election_id,office_id); --prevent duplicates
 
 create table candidate (id serial primary key, candidate_name varchar(200) not null, candidate_email varchar(200), candidate_phone varchar(80), candidate_photo bytea);
 
+create table party (id serial primary key, party_name varchar(80) not null, party_ballot_label varchar(20) not null);
+create unique index party_label_UIX on party(party_ballot_label); --prevent duplicates
 
-create table candidate_office (id serial primary key, candidate_id int, office_id int, eliminated_tf bool not null, filed_date date not null);
-
-create unique index office_id_candidate_id_UIX on candidate_office (office_id,candidate_id);
-
-alter table candidate_office add constraint candidate_office_candidate_FK 
-FOREIGN KEY (candidate_id) 
-REFERENCES candidate(id);
-
-alter table candidate_office add constraint candidate_office_office_FK 
-FOREIGN KEY (office_id) 
-REFERENCES office(id);
-
+create table candidate_oie (id serial primary key, candidate_id integer, oie_id integer, eliminated_tf bool not null, filed_date date not null, party_id integer, candidate_type varchar(20) default 'printed' );
+alter table  candidate_oie add constraint candidate_oie_candidate_FK FOREIGN KEY (candidate_id) REFERENCES candidate(id);
+alter table  candidate_oie add constraint candidate_oie_party_FK FOREIGN KEY (party_id) REFERENCES party(id);
+alter table  candidate_oie add constraint candidate_oie_office_in_election_FK FOREIGN KEY (oie_id) REFERENCES office_in_election(id);
+alter table  candidate_oie add constraint candidate_type_restriction CHECK(candidate_type in ('printed','write-in'));
+create unique index candidate_oie_nodup_UIX on candidate_oie(oie_id, candidate_id); --prevent duplicates
 
 create table ballot (id serial primary key, voter_id int, precinctInfo text, cast_timestamp timestamp);
 
+create table ballot_pref(id serial primary key, ballot_id int, preference_num int, candidate_oie_id int);
+alter table ballot_pref add constraint ballot_pref_ballot_FK FOREIGN KEY (ballot_id) REFERENCES ballot(id);
+alter table ballot_pref add constraint ballot_pref_candidate_oie_FK FOREIGN KEY (candidate_oie_id) REFERENCES candidate_oie(id);
+Create unique index ballot_candidate_OIE_UIX on ballot_pref(ballot_id,candidate_oie_id); --prevent duplicate votes 
 
-create table ballot_pref(id serial primary key, ballot_id int, office_id int, preference_num int, candidate_office_id int);
+create table tabulationresult (id serial primary key, candidate_oie_id integer, voting_round varchar(20), votesreceived integer, pctvotesforoffice decimal(8,5));
+alter table tabulationresult add constraint tabulation_candidateoffice_FK FOREIGN KEY (candidate_oie_id) REFERENCES candidate_oie(id);
 
-alter table ballot_pref add constraint ballot_pref_ballot_FK
-FOREIGN KEY (ballot_id) 
-REFERENCES ballot(id);
-
-alter table ballot_pref add constraint ballot_pref_office_FK
-FOREIGN KEY (office_id) 
-REFERENCES office(id);
-
-alter table ballot_pref add constraint ballot_pref_candidate_office_FK
-FOREIGN KEY (candidate_office_id) 
-REFERENCES candidate_office(id);
-
-Create unique index ballot_pref_pref_UIX on ballot_pref(ballot_id,office_id,preference_num);
 
 
 create or replace procedure sim_voter_bulk(num_votes int, commit_every int, precinct_input varchar(80))
@@ -112,7 +106,7 @@ begin
 			loop
 				fetch c1 into my_row;
 				exit when not found;
-				insert into ballot_pref (ballot_id,office_id,preference_num,candidate_office_id)
+				insert into ballot_pref (ballot_id,preference_num,candidate_oie_id)
 		     	  values (ballot_id_input, dist_office_id_list.office_id, my_rownum, my_row.id);
 		        my_rownum := my_rownum +1;
 			end loop;
@@ -122,15 +116,6 @@ end
 $$
 ;
 
-
-create table election (id serial primary key, earlyvotingbegin date, earlyvotingend date, poll_date date, ballotingclosed bool not null);
-
-create table tabulationresult (id serial primary key, c_o_id integer, voting_round varchar(20), votesreceived integer, pctvotesforoffice decimal(7,5));
-alter table tabulationresult add constraint tabulation_candidateoffice_FK
-FOREIGN KEY (c_o_id) 
-REFERENCES candidate_office(id);
-ALTER TABLE iro.candidate_office ADD election_id integer NULL;
-alter table iro.candidate_office add constraint candidate_office_election_FK FOREIGN KEY (election_id) REFERENCES election(id);
 
 
 
@@ -268,52 +253,52 @@ order by 1,3 desc
 create or replace view vResultsPivot as (
 with round0 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '0'
 ),
 round1 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '1'
 ),
 round2 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '2'
 ),
 round3 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '3'
 ),
 round4 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '4'
 ),
 round5 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '5'
 ),
 round6 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '6'
 ),
 round7 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '7'
 ),
 round8 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '8'
 ),
 round9 as 
 (	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
 where voting_round like '9'
 )
 select 
