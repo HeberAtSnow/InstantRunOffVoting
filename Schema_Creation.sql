@@ -213,65 +213,155 @@ order by 1,3,4 desc
 
 
 
+create or replace procedure TabulateBallotsForOffice(oieID int,electionID int) language plpgsql as $body$
+declare 
+	roundnumber int := 0; num_upd int; num_oies int;
+	ballots_closed bool;
+	largestpercent decimal;
+	lowestvotes decimal;
+	lowestpercentcountcandidates int;
+	lowestpercent_c_o_id int;
+	countofcandidates int;
+	c_o_idwinner int;
+	votesrecievedwinner int;
+	pctvotesforofficewinner decimal;
+	numEffCandidatesInOffice int := 0;
+	numCandidatesWithLowestVotes int := 0;
+	
+begin 
+	select e.ballotingclosed into ballots_closed from election e 
+		where e.id = electionID;
+	if ballots_closed is not true then
+		RAISE EXCEPTION 'Can not calculate ballots before election closes. Update Election.AcceptingBallots before proceeding.';
+		RETURN;
+	end if;
+
+	select count(*) into num_oies from office_in_election oie where election_id=electionID and id=oieID;
+	if num_oies <1 then raise EXCEPTION 'Procedure failure.  Provided oieID is not valid with this election_id.'; RETURN; end if;
+
+	delete from tabulationresult t where t.candidate_oie_id in (
+		select coie.id 
+		from 
+		office_in_election oie inner join candidate_oie coie on (oie.id=coie.oie_id)
+		where oie.election_id=electionID and oie.id=oieID );
+	get diagnostics num_upd = row_count ;
+	RAISE INFO 'Deleted % rows, to start new tabulation results for office id: % and ElectionID: %.', num_upd, offioieID, electionID;
+
+	RAISE INFO 'Round number is %',roundnumber;
+	loop
+		--if any candidates have NULL votes and they are still 'active' then mark them as inactive
+		update candidate_oie coie set eliminated_tf =true 
+		where eliminated_tf is false 
+			and id in 
+			(
+			select coie.id
+			from
+				candidate_oie coie
+			full outer join veffectiveballot v on (coie.id=v.coie_id)
+			where eliminated_tf = false 
+			and v.numvotes is null 
+			);
+		get diagnostics num_upd = row_count ;
+		raise INFO '% candidates had NO VOTES.  Now they are marked as eliminated', num_upd;
+	
+		select max(vEB.pcteffectiveballots) into largestpercent
+		from vEffectiveBallot vEB inner join candidate_oie coie on (VEB.coie_id=coie.id)
+		where vEB.oie_id=oieID ; --note, safety, don't need electionID because of oieID/electionID validation earlier 
+		RAISE Info 'Largest percent: % in round: %', largestpercent, roundnumber;
+	
+		insert into tabulationresult
+			(candidate_oie_id, voting_round, votesreceived, pctvotesforoffice) 
+		select vEB.coie_id, roundnumber, numvotes, PctEffectiveBallots
+			from vEffectiveBallot vEB inner join candidate_oie coie on (coie.id=vEB.coie_id)
+			inner join office_in_election oie on (oie.id=coie.oie_id)
+			where vEB.oie_id=oieID and oie.election_id=electionID;
+
+		--Do we have a winner >50.0%
+		if largestpercent >= 50.0 then
+			RAISE INFO 'Done!  A candidate has >50.0 percent of votes.  Ending.  Pctvotes: %.', largestpercent;
+			exit;
+		end if;
+	
+		--Remove lowest candiate(s) as long as it would leave at least 2 candidates left in the race
+		select min(numvotes) into lowestvotes  from vEffectiveBallot vEB inner join candidate_oie coie on (coie.id=vEB.coie_id)
+			inner join office_in_election oie on (oie.id=coie.oie_id)
+			where vEB.oie_id=oieID and oie.election_id=electionID;
+		select count(*) into numEffCandidatesInOffice from vEffectiveBallot vEB inner join candidate_oie coie on (coie.id=vEB.coie_id)
+			inner join office_in_election oie on (oie.id=coie.oie_id)
+			where vEB.oie_id=oieID and oie.election_id=electionID;
+		select count(*) into numCandidatesWithLowestVotes from vEffectiveBallot vEB inner join candidate_oie coie on (coie.id=vEB.coie_id)
+			inner join office_in_election oie on (oie.id=coie.oie_id)
+			where vEB.oie_id=oieID and oie.election_id=electionID and numvotes=lowestvotes;
+		
+		IF numEffCandidatesInOffice-numCandidatesWithLowestVotes >= 2 then --numEffCandidatesThatWouldRemain
+			update candidate_oie coie set eliminated_tf=true 
+			FROM vEffectiveBallot vEB 
+			WHERE coie.id=vEB.coie_id
+			and   vEB.oie_id=oieID
+			and   vEB.election_id=electionID
+			and	  vEB.numvotes=lowestvotes;
+			get diagnostics num_upd = row_count ;
+			raise INFO 'Marked % candidates as eliminated', num_upd;
+		else
+			RAISE INFO 'Done!  Can not eliminate any more candidates without leaving 2 (or more) candidates left.  office_id: %, election_id: %, roundNumber: %.',officeID,electionID,roundnumber;
+			exit;
+		end if;
+
+		roundnumber := roundnumber +1;
+		RAISE INFO 'Raised round number to: %',roundnumber;
+	end loop;
+end;
+$body$
+;
 
 
 
 create or replace view vResultsPivot as (
 with round0 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '0'
 ),
 round1 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '1'
 ),
 round2 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '2'
 ),
 round3 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '3'
 ),
 round4 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '4'
 ),
 round5 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '5'
 ),
 round6 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '6'
 ),
 round7 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '7'
 ),
 round8 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '8'
 ),
 round9 as 
-(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
-from tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+(	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '9'
 )
 select 
-c_o.election_id ,
-o.office_name ,o.id,
+oie.election_id ,
+o.office_name ,o.id office_id,
 c.candidate_name,
-c_o.candidate_id, 
+coie.candidate_id, 
 round0.votesreceived InitialRoundVotes, to_char(round0.pctvotesforoffice,'fm00D000%') InitialRoundPct,
 round1.votesreceived Round1Votes, to_char(round1.pctvotesforoffice,'fm00D000%') Round1Pct,
 round2.votesreceived Round2Votes, to_char(round2.pctvotesforoffice,'fm00D000%') Round2Pct,
@@ -283,21 +373,20 @@ round7.votesreceived Round7Votes, to_char(round7.pctvotesforoffice,'fm00D000%') 
 round8.votesreceived Round8Votes, to_char(round8.pctvotesforoffice,'fm00D000%') Round8Pct,
 round9.votesreceived Round9Votes, to_char(round9.pctvotesforoffice,'fm00D000%') Round9Pct
 from 
-candidate c 
-inner join candidate_office c_o on (c.id=c_o.candidate_id) 
-inner join office o on (o.id=c_o.office_id)
-left join round0 on (c_o.id=round0.c_o_id)
-left join round1 on (c_o.id=round1.c_o_id)
-left join round2 on (c_o.id=round2.c_o_id)
-left join round3 on (c_o.id=round3.c_o_id)
-left join round4 on (c_o.id=round4.c_o_id)
-left join round5 on (c_o.id=round5.c_o_id)
-left join round6 on (c_o.id=round6.c_o_id)
-left join round7 on (c_o.id=round7.c_o_id)
-left join round8 on (c_o.id=round8.c_o_id)
-left join round9 on (c_o.id=round9.c_o_id)
-where 
-c_o.election_id = 2
-order by c_o.election_id , o.id,c.candidate_name 
+	office o inner join
+	office_in_election oie on (o.id=oie.office_id) inner join
+	candidate_oie coie on (coie.oie_id=oie.id) inner join
+	candidate c on (c.id=coie.candidate_id)
+	left join round0 on (coie.id=round0.coie_id)
+	left join round1 on (coie.id=round1.coie_id)
+	left join round2 on (coie.id=round2.coie_id)
+	left join round3 on (coie.id=round3.coie_id)
+	left join round4 on (coie.id=round4.coie_id)
+	left join round5 on (coie.id=round5.coie_id)
+	left join round6 on (coie.id=round6.coie_id)
+	left join round7 on (coie.id=round7.coie_id)
+	left join round8 on (coie.id=round8.coie_id)
+	left join round9 on (coie.id=round9.coie_id)
+order by 1,3,4 
 );
 
