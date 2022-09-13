@@ -1,0 +1,352 @@
+Create schema if not exists iro;
+
+set search_path='iro';
+
+drop table if exists ballot_pref;
+drop table if exists ballot;
+
+drop table if exists candidate_office;
+
+drop table if exists office;
+drop table if exists candidate;
+
+Drop table if exists state;
+Drop table if exists city;
+Drop table if exists county;
+
+drop sequence if exists voter_id_seq;
+create sequence voter_id_seq increment by 1 start with 111;
+
+
+create table county (id serial primary key, county_name varchar(80), county_description varchar(80),  contact_title varchar(80), contact_name varchar(80), contact_email varchar(200), contact_phone varchar(80));
+
+create table city (id serial primary key, city_name varchar(80), city_description varchar(80),  contact_title varchar(80), contact_name varchar(80), contact_email varchar(200), contact_phone varchar(80));
+
+create table state(id serial primary key, state_name varchar(80), state_description varchar(80),  contact_title varchar(80), contact_name varchar(80), contact_email varchar(200), contact_phone varchar(80));
+
+create table office (id serial primary key, office_name varchar(80), county_id integer, city_id integer, state_id integer, positions_num integer, election_id integer, constraint city_county_state_office_validation 
+CHECK ( (county_id IS NOT null and city_id IS NULL and state_id IS NULL) or (county_id IS null and city_id IS NOT NULL and state_id IS NULL) or (county_id IS  null and city_id IS NULL and state_id IS NOT NULL) )
+);
+Alter table office add constraint office_city_fk FOREIGN KEY (city_id) REFERENCES city(id);
+Alter table office add constraint office_state_fk FOREIGN KEY (state_id) REFERENCES state(id);
+Alter table office add constraint office_county_fk FOREIGN KEY (county_id) REFERENCES county(id);
+alter table office add constraint office_election_fk FOREIGN KEY(election_id) REFERENCES election(id);
+
+create table candidate (id serial primary key, candidate_name varchar(200) not null, candidate_email varchar(200), candidate_phone varchar(80), candidate_photo bytea);
+
+
+create table candidate_office (id serial primary key, candidate_id int, office_id int, eliminated_tf bool not null, filed_date date not null);
+
+create unique index office_id_candidate_id_UIX on candidate_office (office_id,candidate_id);
+
+alter table candidate_office add constraint candidate_office_candidate_FK 
+FOREIGN KEY (candidate_id) 
+REFERENCES candidate(id);
+
+alter table candidate_office add constraint candidate_office_office_FK 
+FOREIGN KEY (office_id) 
+REFERENCES office(id);
+
+
+create table ballot (id serial primary key, voter_id int, precinctInfo text, cast_timestamp timestamp);
+
+
+create table ballot_pref(id serial primary key, ballot_id int, office_id int, preference_num int, candidate_office_id int);
+
+alter table ballot_pref add constraint ballot_pref_ballot_FK
+FOREIGN KEY (ballot_id) 
+REFERENCES ballot(id);
+
+alter table ballot_pref add constraint ballot_pref_office_FK
+FOREIGN KEY (office_id) 
+REFERENCES office(id);
+
+alter table ballot_pref add constraint ballot_pref_candidate_office_FK
+FOREIGN KEY (candidate_office_id) 
+REFERENCES candidate_office(id);
+
+Create unique index ballot_pref_pref_UIX on ballot_pref(ballot_id,office_id,preference_num);
+
+
+create or replace procedure sim_voter_bulk(num_votes int, commit_every int, precinct_input varchar(80))
+language plpgsql as $$
+declare 
+  ballots_done int;
+begin
+	ballots_done:=0;
+	while ballots_done < num_votes
+	loop
+	   call sim_voter_ballot(precinct_input);
+	   ballots_done := ballots_done +1;
+	   if(ballots_done%commit_every = 0) then commit; end if;
+	end loop;
+end 
+$$
+;
+
+create or replace procedure sim_voter_ballot(precinct_input varchar(80))
+language plpgsql as $$
+declare 
+	my_cur_ballot int;
+begin
+	insert into ballot(voter_id,precinctinfo,cast_timestamp) values(   nextval('voter_id_seq'), precinct_input,now())
+	   returning id into my_cur_ballot;
+	call sim_voter_ballot_pref(my_cur_ballot);
+end 
+$$
+;
+
+create or replace procedure sim_voter_ballot_pref(ballot_id_input int)
+language plpgsql as $$
+declare 
+  dist_office_id_list record;
+  cand_off cursor (this_office_id int) for select id,candidate_id,office_id from candidate_office where office_id=this_office_id order by random();
+  my_rownum int;
+  my_row candidate_office%ROWTYPE;
+  c1 cursor (this_office_id int) for select id,candidate_id,office_id from candidate_office where office_id=this_office_id order by random();
+begin
+	FOR dist_office_id_list in select distinct office_id from candidate_office
+		loop
+			open c1(dist_office_id_list.office_id);
+			my_rownum:=1;--firstPref=1
+			loop
+				fetch c1 into my_row;
+				exit when not found;
+				insert into ballot_pref (ballot_id,office_id,preference_num,candidate_office_id)
+		     	  values (ballot_id_input, dist_office_id_list.office_id, my_rownum, my_row.id);
+		        my_rownum := my_rownum +1;
+			end loop;
+    		close c1;
+    END LOOP;
+end 
+$$
+;
+
+
+create table election (id serial primary key, earlyvotingbegin date, earlyvotingend date, poll_date date, ballotingclosed bool not null);
+
+create table tabulationresult (id serial primary key, c_o_id integer, voting_round varchar(20), votesreceived integer, pctvotesforoffice decimal(7,5));
+alter table tabulationresult add constraint tabulation_candidateoffice_FK
+FOREIGN KEY (c_o_id) 
+REFERENCES candidate_office(id);
+ALTER TABLE iro.candidate_office ADD election_id integer NULL;
+alter table iro.candidate_office add constraint candidate_office_election_FK FOREIGN KEY (election_id) REFERENCES election(id);
+
+
+
+create view vEffectiveBallot (office_id , c_o_id, numvotes, PctEffectiveBallots, office_total_votes) as (
+with 
+pref1 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id  from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num =1 
+),
+pref2 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=2 
+),
+pref3 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=3 
+),
+pref4 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=4 
+),
+pref5 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=5 
+),
+pref6 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=6 
+),
+pref7 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=7 
+),
+pref8 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=8 
+),
+pref9 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=9 
+),
+pref10 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=10 
+),
+pref11 as (
+select ballot_id,co.office_id,case 
+when co.eliminated_tf is true then null else candidate_office_id end c_o_id from
+ballot_pref bp inner join candidate_office co 
+on (bp.office_id=co.office_id and bp.candidate_office_id=co.id)
+--inner join vars on (vars.curr_office=co.office_id)
+where preference_num=11 
+),
+eff_ballot as (
+select pref1.ballot_id,pref1.office_id,
+       coalesce(pref1.c_o_id,pref2.c_o_id,pref3.c_o_id, pref4.c_o_id,pref5.c_o_id,
+       		pref6.c_o_id,pref7.c_o_id,pref8.c_o_id,pref9.c_o_id,pref10.c_o_id,pref11.c_o_id
+       ) effective_c_o_id
+from
+	pref1 
+	full join pref2 on (pref1.ballot_id=pref2.ballot_id and pref1.office_id=pref2.office_id)
+	full join pref3 on (pref1.ballot_id=pref3.ballot_id and pref1.office_id=pref3.office_id)
+	full join pref4 on (pref1.ballot_id=pref4.ballot_id and pref1.office_id=pref4.office_id)
+	full join pref5 on (pref1.ballot_id=pref5.ballot_id and pref1.office_id=pref5.office_id)
+	full join pref6 on (pref1.ballot_id=pref6.ballot_id and pref1.office_id=pref6.office_id)
+	full join pref7 on (pref1.ballot_id=pref7.ballot_id and pref1.office_id=pref7.office_id)
+	full join pref8 on (pref1.ballot_id=pref8.ballot_id and pref1.office_id=pref8.office_id)
+	full join pref9 on (pref1.ballot_id=pref9.ballot_id and pref1.office_id=pref9.office_id)
+	full join pref10 on (pref1.ballot_id=pref10.ballot_id and pref1.office_id=pref10.office_id)
+	full join pref11 on (pref1.ballot_id=pref11.ballot_id and pref1.office_id=pref11.office_id)
+),
+co_votes as (
+select office_id,count(*) as office_total_votes from eff_ballot
+group by office_id
+)
+select 
+	eff_ballot.office_id , 
+	effective_c_o_id, 
+	count(*) as numvotes,
+	count(*)/(cast(co_votes.office_total_votes as decimal))*100 as PctEffectiveBallots,
+	co_votes.office_total_votes
+from 
+	eff_ballot 
+	inner join co_votes on (co_votes.office_id=eff_ballot.office_id)
+group by eff_ballot.office_id,effective_c_o_id,office_total_votes
+order by 1,3 desc
+);
+
+
+
+
+
+
+
+create or replace view vResultsPivot as (
+with round0 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '0'
+),
+round1 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '1'
+),
+round2 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '2'
+),
+round3 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '3'
+),
+round4 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '4'
+),
+round5 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '5'
+),
+round6 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '6'
+),
+round7 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '7'
+),
+round8 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '8'
+),
+round9 as 
+(	select t.c_o_id c_o_id, voting_round voting_round , votesreceived , pctvotesforoffice 
+from iro.tabulationresult t inner join candidate_office c_o on (c_o.id=t.c_o_id)
+where voting_round like '9'
+)
+select 
+c_o.election_id ,
+o.office_name ,o.id,
+c.candidate_name,
+c_o.candidate_id, 
+round0.votesreceived InitialRoundVotes, to_char(round0.pctvotesforoffice,'fm00D000%') InitialRoundPct,
+round1.votesreceived Round1Votes, to_char(round1.pctvotesforoffice,'fm00D000%') Round1Pct,
+round2.votesreceived Round2Votes, to_char(round2.pctvotesforoffice,'fm00D000%') Round2Pct,
+round3.votesreceived Round3Votes, to_char(round3.pctvotesforoffice,'fm00D000%') Round3Pct,
+round4.votesreceived Round4Votes, to_char(round4.pctvotesforoffice,'fm00D000%') Round4Pct,
+round5.votesreceived Round5Votes, to_char(round5.pctvotesforoffice,'fm00D000%') Round5Pct,
+round6.votesreceived Round6Votes, to_char(round6.pctvotesforoffice,'fm00D000%') Round6Pct,
+round7.votesreceived Round7Votes, to_char(round7.pctvotesforoffice,'fm00D000%') Round7Pct,
+round8.votesreceived Round8Votes, to_char(round8.pctvotesforoffice,'fm00D000%') Round8Pct,
+round9.votesreceived Round9Votes, to_char(round9.pctvotesforoffice,'fm00D000%') Round9Pct
+from 
+candidate c 
+inner join candidate_office c_o on (c.id=c_o.candidate_id) 
+inner join office o on (o.id=c_o.office_id)
+left join round0 on (c_o.id=round0.c_o_id)
+left join round1 on (c_o.id=round1.c_o_id)
+left join round2 on (c_o.id=round2.c_o_id)
+left join round3 on (c_o.id=round3.c_o_id)
+left join round4 on (c_o.id=round4.c_o_id)
+left join round5 on (c_o.id=round5.c_o_id)
+left join round6 on (c_o.id=round6.c_o_id)
+left join round7 on (c_o.id=round7.c_o_id)
+left join round8 on (c_o.id=round8.c_o_id)
+left join round9 on (c_o.id=round9.c_o_id)
+where 
+c_o.election_id = 2
+order by c_o.election_id , o.id,c.candidate_name 
+);
+
