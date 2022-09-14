@@ -7,7 +7,7 @@ services:
     ports:
       - 5432:5432
     environment:
-      - POSTGRES_USER=iro2
+      - POSTGRES_USER=iro
       - POSTGRES_PASSWORD=Secret123
     volumes:
       - ./Schema_Creation.sql:/docker-entrypoint-initdb.d/Schema_Creation.sql

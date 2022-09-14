@@ -1,6 +1,6 @@
-Create schema if not exists iro2;
+Create schema if not exists iro;
 
-set search_path='iro2';
+set search_path='iro';
 
 drop view if exists vResultsPivot;
 drop view if exists vEffectiveBallot;

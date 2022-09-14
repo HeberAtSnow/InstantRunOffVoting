@@ -40,7 +40,7 @@ dotnet add package npgsql.entityframeworkcore.postgresql
 Now you should be able to scaffold the database
 
 ```bash
-dotnet ef dbcontext scaffold "host=localhost; database=iro2; user id=iro2; password=Secret123" Npgsql.EntityFrameworkCore.PostgreSQL -o Data -c InstantRunoffContext
+dotnet ef dbcontext scaffold "host=localhost; database=iro; user id=iro; password=Secret123" Npgsql.EntityFrameworkCore.PostgreSQL -o Data -c InstantRunoffContext
 ```
 
 Open up the `Data/InstantRunoffContext.cs` file and cut the connection string into your clipboard (the string that starts with `"host=..."`).  With the connection string in the clipboard, delete the entire OnConfiguring() method from `Data/InstantRunoffContext.cs`
