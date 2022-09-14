@@ -57,7 +57,7 @@ Open up `appsettings.json` and add a `connectionStrings` section.  Paste in the 
   },
   "AllowedHosts": "*",
   "ConnectionStrings": {
-    "iro": "host=localhost; database=iro2; user id=iro2; password=Secret123"
+    "iro": "host=localhost; database=iro; user id=iro; password=Secret123"
   }
 }
 
