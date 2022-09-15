@@ -366,7 +366,6 @@ select office.id office_id,county_name as locality from county inner join office
 union 
 select office.id office_id,state_name as locality from state inner join office on (office.state_id=state.id)
 )
-)
 select 
 oie.election_id ,
 o.office_name ,o.id office_id, localitynames.locality,
