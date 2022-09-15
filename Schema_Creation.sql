@@ -358,22 +358,30 @@ where voting_round like '8'
 round9 as 
 (	select t.candidate_oie_id coie_id, voting_round, votesreceived , pctvotesforoffice from tabulationresult t 
 where voting_round like '9'
+),
+localitynames as (
+select office.id office_id,city_name as locality from city inner join office on (office.city_id=city.id)
+union
+select office.id office_id,county_name as locality from county inner join office on (office.county_id=county.id)
+union 
+select office.id office_id,state_name as locality from state inner join office on (office.state_id=state.id)
+)
 )
 select 
 oie.election_id ,
-o.office_name ,o.id office_id,
+o.office_name ,o.id office_id, localitynames.locality,
 c.candidate_name,
 coie.candidate_id, 
-round0.votesreceived InitialRoundVotes, to_char(round0.pctvotesforoffice,'fm00D000%') InitialRoundPct,
-round1.votesreceived Round1Votes, to_char(round1.pctvotesforoffice,'fm00D000%') Round1Pct,
-round2.votesreceived Round2Votes, to_char(round2.pctvotesforoffice,'fm00D000%') Round2Pct,
-round3.votesreceived Round3Votes, to_char(round3.pctvotesforoffice,'fm00D000%') Round3Pct,
-round4.votesreceived Round4Votes, to_char(round4.pctvotesforoffice,'fm00D000%') Round4Pct,
-round5.votesreceived Round5Votes, to_char(round5.pctvotesforoffice,'fm00D000%') Round5Pct,
-round6.votesreceived Round6Votes, to_char(round6.pctvotesforoffice,'fm00D000%') Round6Pct,
-round7.votesreceived Round7Votes, to_char(round7.pctvotesforoffice,'fm00D000%') Round7Pct,
-round8.votesreceived Round8Votes, to_char(round8.pctvotesforoffice,'fm00D000%') Round8Pct,
-round9.votesreceived Round9Votes, to_char(round9.pctvotesforoffice,'fm00D000%') Round9Pct
+round0.votesreceived InitialRoundVotes, trunc(round0.pctvotesforoffice,3) InitialRoundPct,
+round1.votesreceived Round1Votes, trunc(round1.pctvotesforoffice,3) Round1Pct,
+round2.votesreceived Round2Votes, trunc(round2.pctvotesforoffice,3) Round2Pct,
+round3.votesreceived Round3Votes, trunc(round3.pctvotesforoffice,3) Round3Pct,
+round4.votesreceived Round4Votes, trunc(round4.pctvotesforoffice,3) Round4Pct,
+round5.votesreceived Round5Votes, trunc(round5.pctvotesforoffice,3) Round5Pct,
+round6.votesreceived Round6Votes, trunc(round6.pctvotesforoffice,3) Round6Pct,
+round7.votesreceived Round7Votes, trunc(round7.pctvotesforoffice,3) Round7Pct,
+round8.votesreceived Round8Votes, trunc(round8.pctvotesforoffice,3) Round8Pct,
+round9.votesreceived Round9Votes, trunc(round9.pctvotesforoffice,3) Round9Pct
 from 
 	office o inner join
 	office_in_election oie on (o.id=oie.office_id) inner join
@@ -389,6 +397,7 @@ from
 	left join round7 on (coie.id=round7.coie_id)
 	left join round8 on (coie.id=round8.coie_id)
 	left join round9 on (coie.id=round9.coie_id)
+	left join localitynames on (localitynames.office_id=o.id)
 order by 1,3,4 
 );
 
