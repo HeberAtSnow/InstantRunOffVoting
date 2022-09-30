@@ -248,7 +248,7 @@ begin
 		where oie.election_id=electionID and oie.id=oieID );
 	get diagnostics num_upd = row_count ;
 	RAISE INFO 'Deleted % rows, to start new tabulation results for office id: % and ElectionID: %.', num_upd, oieID, electionID;
-
+    	update candidate_oie set eliminated_tf = false where oie_id = oieid;
 	RAISE INFO 'Round number is %',roundnumber;
 	loop
 		--if any candidates have NULL votes and they are still 'active' then mark them as inactive
